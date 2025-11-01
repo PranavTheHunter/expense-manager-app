@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Expense Manager</title>
+    <title>Expense Manager (Shared)</title>
     <!-- Load Tailwind CSS for styling -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Load Chart.js for data visualization -->
@@ -75,8 +75,8 @@
     <!-- MAIN APPLICATION DASHBOARD - Hidden initially -->
     <div id="app" class="p-4 lg:p-8 hidden">
         <header class="mb-8">
-            <h1 class="text-4xl font-extrabold text-gray-800 mb-2">My Expense Tracker</h1>
-            <p class="text-sm text-gray-600">Securely managed by local access control.</p>
+            <h1 class="text-4xl font-extrabold text-gray-800 mb-2">My Expense Tracker (Shared Data)</h1>
+            <p class="text-sm text-gray-600">All entries are visible to all users who have access.</p>
         </header>
 
         <main id="main-layout" class="grid gap-6 lg:gap-8">
@@ -117,7 +117,7 @@
 
                     <div>
                         <label for="person" class="block text-sm font-medium text-gray-700">Person (Optional)</label>
-                        <input type="text" id="person" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border" placeholder="e.g., Self, Partner">
+                        <input type="text" id="person" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border" placeholder="e.g., John, Jane">
                     </div>
 
                     <button type="submit" class="btn-primary w-full text-lg">Record Expense</button>
@@ -180,23 +180,21 @@
 
         // --- HARDCODED PASSWORD ---
         const MASTER_PASSWORD = "expense2025"; 
-        // NOTE: For a real application, never hardcode passwords. This is for local demonstration only.
-
+        
         // --- DEPLOYMENT-READY FIREBASE CONFIGURATION ---
-        // Your provided configuration is placed here:
-       const firebaseConfig = {
-  apiKey: "AIzaSyDA5iC_Fy7aa322POewfwRDC0umNJYtKIE",
-  authDomain: "expense-management-70aed.firebaseapp.com",
-  projectId: "expense-management-70aed",
-  storageBucket: "expense-management-70aed.firebasestorage.app",
-  messagingSenderId: "65855926325",
-  appId: "1:65855926325:web:dc938a69c528c04d3f817c",
-  measurementId: "G-ND3KE631NC"
-};
+        const firebaseConfig = {
+            apiKey: "AIzaSyDA5iC_Fy7aa322POewfwRDC0umNJYtKIE",
+            authDomain: "expense-management-70aed.firebaseapp.com",
+            projectId: "expense-management-70aed",
+            storageBucket: "expense-management-70aed.firebasestorage.app",
+            messagingSenderId: "65855926325",
+            appId: "1:65855926325:web:dc938a69c528c04d3f817c",
+            measurementId: "G-ND3KE631NC"
+        };
         
         // Derive the required appId from the config
         const appId = firebaseConfig.projectId; 
-        const initialAuthToken = null; // No custom token needed for public deployment
+        const initialAuthToken = null; 
 
         let app;
         let db;
@@ -280,20 +278,14 @@
                 // Set session persistence to maintain login status
                 await setPersistence(auth, browserSessionPersistence);
 
+                // Sign in anonymously for a unique, shared session ID
+                await signInAnonymously(auth);
 
-                // 1. Initial Sign In (using provided token or anonymously)
-                if (initialAuthToken) {
-                    await signInWithCustomToken(auth, initialAuthToken);
-                } else {
-                    // Sign in anonymously, this user's unique UID will handle data isolation
-                    await signInAnonymously(auth);
-                }
-
-                // 2. Auth State Listener
+                // Auth State Listener
                 onAuthStateChanged(auth, (user) => {
                     if (user) {
                         currentUserId = user.uid;
-                        console.log("Authenticated with UID:", currentUserId);
+                        console.log("Authenticated for shared access with UID:", currentUserId);
                         // Start loading data after successful authentication
                         setupRealtimeDataListener();
                         setupFilterListeners();
@@ -312,16 +304,16 @@
         // --- Data Interaction (Firestore) ---
 
         /**
-         * Gets the Firestore collection path for the current user's private data.
+         * Gets the Firestore collection path for the SHARED data.
          * @returns {string} The collection path.
          */
         function getExpensesCollectionPath() {
             if (!currentUserId) {
-                // Should not happen if password gate works correctly, but good guardrail
                 throw new Error("User not authenticated.");
             }
-            // Uses the authenticated user's ID for secure, private storage
-            return `/artifacts/${appId}/users/${currentUserId}/expenses`;
+            // *** CRUCIAL CHANGE: USING PUBLIC/SHARED COLLECTION PATH ***
+            // This path is accessible by ANY authenticated user (per the new security rules).
+            return `/artifacts/${appId}/public/data/shared_expenses`;
         }
 
         /**
@@ -392,11 +384,11 @@
                         id: doc.id,
                         ...doc.data()
                     }));
-                    console.log("Expenses updated:", allExpenses.length);
+                    console.log("Expenses updated (Shared Pool):", allExpenses.length);
                     processAndRenderDashboard();
                 }, (error) => {
                     console.error("Error listening to expenses:", error);
-                    showMessage('Could not sync data in real-time.', 'error');
+                    showMessage('Could not sync shared data in real-time. Check Security Rules.', 'error');
                 });
             } catch (error) {
                 console.error("Error setting up listener:", error.message);
@@ -515,9 +507,9 @@
                 li.className = 'flex justify-between items-center py-3 px-2 transition duration-150 hover:bg-gray-50';
                 li.innerHTML = `
                     <div class="flex-1 min-w-0">
-                        <p class="text-lg font-medium text-gray-800">${expense.category} (${expense.person})</p>
+                        <p class="text-lg font-medium text-gray-800">${expense.category}</p>
                         <p class="text-sm text-gray-500">
-                            ${expense.date}
+                            Logged by: ${expense.person || 'N/A'} - ${expense.date}
                         </p>
                     </div>
                     <div class="text-right">
