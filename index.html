@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Expense Manager</title>
+    <!-- Load Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load Chart.js for data visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        /* Custom styles for aesthetic enhancements */
+        :root {
+            --primary-color: #3b82f6; /* Blue-500 */
+            --primary-dark: #1d4ed8; /* Blue-700 */
+            --bg-light: #f3f4f6;
+            --card-bg: #ffffff;
+            --shadow-custom: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-light);
+            min-height: 100vh;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            box-shadow: var(--shadow-custom);
+            border-radius: 12px;
+            padding: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            transition: background-color 0.2s;
+        }
+
+        .btn-primary:hover {
+            background-color: var(--primary-dark);
+        }
+
+        /* Responsive layout using Grid for desktop */
+        @media (min-width: 1024px) {
+            #main-layout {
+                grid-template-columns: 1fr 2fr;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 
+        AUTHENTICATION GATE - Displayed first.
+    -->
+    <div id="auth-gate" class="flex items-center justify-center min-h-screen p-4">
+        <div class="card w-full max-w-sm text-center">
+            <h1 class="text-3xl font-bold text-gray-800 mb-6">Access Expense Manager</h1>
+            <form id="password-form" class="space-y-4">
+                <div>
+                    <input type="password" id="access-password" required 
+                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-3 border text-center" 
+                           placeholder="Enter Password">
+                </div>
+                <button type="submit" class="btn-primary w-full text-lg">Access Dashboard</button>
+                <p id="password-error" class="text-red-500 text-sm hidden">Incorrect password. Please try again.</p>
+            </form>
+        </div>
+    </div>
+
+    <!-- MAIN APPLICATION DASHBOARD - Hidden initially -->
+    <div id="app" class="p-4 lg:p-8 hidden">
+        <header class="mb-8">
+            <h1 class="text-4xl font-extrabold text-gray-800 mb-2">My Expense Tracker</h1>
+            <p class="text-sm text-gray-600">Securely managed by local access control.</p>
+        </header>
+
+        <main id="main-layout" class="grid gap-6 lg:gap-8">
+            <!-- Left Panel: Expense Entry Form -->
+            <div class="card h-fit">
+                <h2 class="text-2xl font-semibold text-gray-700 mb-6 border-b pb-2">Add New Expense</h2>
+
+                <form id="expense-form" class="space-y-4">
+                    <div>
+                        <label for="category" class="block text-sm font-medium text-gray-700">Item/Category</label>
+                        <select id="category" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border">
+                            <option value="">Select Category</option>
+                            <option value="Petrol">Petrol</option>
+                            <option value="Gym">Gym/Fitness</option>
+                            <option value="Groceries">Groceries</option>
+                            <option value="Rent">Rent/Housing</option>
+                            <option value="Utilities">Utilities</option>
+                            <option value="Entertainment">Entertainment</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+
+                    <!-- Input for specifying 'Other' category -->
+                    <div id="other-category-container" class="hidden">
+                        <label for="other-category-input" class="block text-sm font-medium text-gray-700">Specify 'Other' Category</label>
+                        <input type="text" id="other-category-input" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border" placeholder="e.g., Car Wash, Donation">
+                    </div>
+
+                    <div>
+                        <label for="amount" class="block text-sm font-medium text-gray-700">Amount (Rs)</label>
+                        <input type="number" id="amount" required min="1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border" placeholder="e.g., 2100">
+                    </div>
+
+                    <div>
+                        <label for="date" class="block text-sm font-medium text-gray-700">Date</label>
+                        <input type="date" id="date" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border">
+                    </div>
+
+                    <div>
+                        <label for="person" class="block text-sm font-medium text-gray-700">Person (Optional)</label>
+                        <input type="text" id="person" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border" placeholder="e.g., Self, Partner">
+                    </div>
+
+                    <button type="submit" class="btn-primary w-full text-lg">Record Expense</button>
+                    <div id="message-box" class="mt-4 p-3 hidden rounded-md text-sm"></div>
+                </form>
+            </div>
+
+            <!-- Right Panel: Dashboard, Filters, and Expenses -->
+            <div>
+                <!-- Filters Section -->
+                <div class="card mb-6">
+                    <h2 class="text-xl font-semibold text-gray-700 mb-4">Filters</h2>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div>
+                            <label for="filter-category" class="block text-sm font-medium text-gray-700">Filter Category</label>
+                            <select id="filter-category" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border">
+                                <option value="all">All Categories</option>
+                                <!-- Categories populated dynamically -->
+                            </select>
+                        </div>
+                        <div>
+                            <label for="filter-start-date" class="block text-sm font-medium text-gray-700">Start Date</label>
+                            <input type="date" id="filter-start-date" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border">
+                        </div>
+                        <div>
+                            <label for="filter-end-date" class="block text-sm font-medium text-gray-700">End Date</label>
+                            <input type="date" id="filter-end-date" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Chart Visualization -->
+                <div class="card mb-6">
+                    <h2 class="text-xl font-semibold text-gray-700 mb-4 border-b pb-2">Monthly Expenditure Trend</h2>
+                    <div class="p-2">
+                        <canvas id="monthly-chart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Expense List -->
+                <div class="card">
+                    <h2 class="text-xl font-semibold text-gray-700 mb-4 border-b pb-2">Recent Transactions</h2>
+                    <div id="expense-list-container" class="space-y-3">
+                        <p id="loading-indicator" class="text-center text-gray-500">Loading expenses...</p>
+                        <ul id="expense-list" class="divide-y divide-gray-100">
+                            <!-- Expenses will be dynamically inserted here -->
+                        </ul>
+                        <p id="no-expenses" class="hidden text-center text-gray-500 italic">No expenses recorded yet or matching the current filter.</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Firebase and Application Logic -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, setPersistence, browserSessionPersistence } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, addDoc, onSnapshot, collection, query, orderBy, serverTimestamp, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- HARDCODED PASSWORD ---
+        const MASTER_PASSWORD = "expense2025"; 
+        // NOTE: For a real application, never hardcode passwords. This is for local demonstration only.
+
+        // --- DEPLOYMENT-READY FIREBASE CONFIGURATION ---
+        // Your provided configuration is placed here:
+        const firebaseConfig = {
+            apiKey: "AIzaSyDA5iC_Fy7aa322POewfwRDC0umNJYtKIE",
+            authDomain: "expense-management-70aed.firebaseapp.com",
+            projectId: "expense-management-70aed",
+            storageBucket: "expense-management-70aed.firebasestorage.app",
+            messagingSenderId: "65855926325",
+            appId: "1:65855926325:web:dc938a69c528c04d3f817c",
+            measurementId: "G-ND3KE631NC"
+        };
+        
+        // Derive the required appId from the config
+        const appId = firebaseConfig.projectId; 
+        const initialAuthToken = null; // No custom token needed for public deployment
+
+        let app;
+        let db;
+        let auth;
+        let currentUserId = null;
+        let chartInstance = null;
+        let allExpenses = [];
+
+        // UI elements
+        const authGate = document.getElementById('auth-gate');
+        const mainApp = document.getElementById('app');
+        const passwordForm = document.getElementById('password-form');
+        const accessPasswordInput = document.getElementById('access-password');
+        const passwordError = document.getElementById('password-error');
+
+        const form = document.getElementById('expense-form');
+        const expenseListUl = document.getElementById('expense-list');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        const noExpenses = document.getElementById('no-expenses');
+        const filterCategorySelect = document.getElementById('filter-category');
+        const filterStartDate = document.getElementById('filter-start-date');
+        const filterEndDate = document.getElementById('filter-end-date');
+        const messageBox = document.getElementById('message-box');
+
+        // UI elements for 'Other' category
+        const categorySelect = document.getElementById('category');
+        const otherCategoryContainer = document.getElementById('other-category-container');
+        const otherCategoryInput = document.getElementById('other-category-input');
+
+        // --- Authentication Gate Logic ---
+
+        /**
+         * Handles the password submission to grant access.
+         */
+        function handlePasswordSubmit(e) {
+            e.preventDefault();
+            const enteredPassword = accessPasswordInput.value;
+
+            if (enteredPassword === MASTER_PASSWORD) {
+                passwordError.classList.add('hidden');
+                authGate.classList.add('hidden');
+                mainApp.classList.remove('hidden');
+                initializeFirebase(); // Only initialize and load data after success
+            } else {
+                passwordError.classList.remove('hidden');
+                accessPasswordInput.value = '';
+                accessPasswordInput.focus();
+            }
+        }
+
+        // --- Utility Functions ---
+
+        /**
+         * Shows a transient notification message to the user.
+         * @param {string} message - The message content.
+         * @param {string} type - 'success' or 'error'.
+         */
+        function showMessage(message, type) {
+            messageBox.textContent = message;
+            messageBox.classList.remove('hidden', 'bg-red-100', 'text-red-800', 'bg-green-100', 'text-green-800');
+
+            if (type === 'success') {
+                messageBox.classList.add('bg-green-100', 'text-green-800');
+            } else if (type === 'error') {
+                messageBox.classList.add('bg-red-100', 'text-red-800');
+            }
+
+            setTimeout(() => {
+                messageBox.classList.add('hidden');
+            }, 3000);
+        }
+
+        // --- Firebase Initialization and Authentication ---
+
+        async function initializeFirebase() {
+            try {
+                app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+
+                // Set session persistence to maintain login status
+                await setPersistence(auth, browserSessionPersistence);
+
+
+                // 1. Initial Sign In (using provided token or anonymously)
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    // Sign in anonymously, this user's unique UID will handle data isolation
+                    await signInAnonymously(auth);
+                }
+
+                // 2. Auth State Listener
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        currentUserId = user.uid;
+                        console.log("Authenticated with UID:", currentUserId);
+                        // Start loading data after successful authentication
+                        setupRealtimeDataListener();
+                        setupFilterListeners();
+                        setupCategoryChangeListener(); 
+                    } else {
+                        currentUserId = null;
+                        console.error("Authentication failed or user logged out.");
+                    }
+                });
+            } catch (error) {
+                console.error("Firebase initialization or authentication error:", error);
+                showMessage('Firebase failed to initialize. Check console for details.', 'error');
+            }
+        }
+
+        // --- Data Interaction (Firestore) ---
+
+        /**
+         * Gets the Firestore collection path for the current user's private data.
+         * @returns {string} The collection path.
+         */
+        function getExpensesCollectionPath() {
+            if (!currentUserId) {
+                // Should not happen if password gate works correctly, but good guardrail
+                throw new Error("User not authenticated.");
+            }
+            // Uses the authenticated user's ID for secure, private storage
+            return `/artifacts/${appId}/users/${currentUserId}/expenses`;
+        }
+
+        /**
+         * Handles the submission of a new expense.
+         */
+        async function handleFormSubmit(e) {
+            e.preventDefault();
+
+            if (!currentUserId) {
+                showMessage("Authentication required to save data. Please re-enter the password if necessary.", 'error');
+                return;
+            }
+
+            const selectedCategory = categorySelect.value;
+            let finalCategory = selectedCategory;
+
+            // Check if 'Other' is selected and get the custom value
+            if (selectedCategory === 'Other') {
+                finalCategory = otherCategoryInput.value.trim();
+                if (!finalCategory) {
+                    showMessage("Please specify the 'Other' category.", 'error');
+                    return;
+                }
+            }
+
+
+            const newExpense = {
+                category: finalCategory, // Use the final, potentially custom category
+                amount: parseFloat(document.getElementById('amount').value),
+                date: document.getElementById('date').value, // Store as YYYY-MM-DD string
+                person: document.getElementById('person').value || 'Self',
+                createdAt: serverTimestamp() 
+            };
+
+            if (!newExpense.category || !newExpense.amount || !newExpense.date) {
+                showMessage("Please fill in Category, Amount, and Date.", 'error');
+                return;
+            }
+
+            try {
+                const colRef = collection(db, getExpensesCollectionPath());
+                await addDoc(colRef, newExpense);
+                showMessage('Expense recorded successfully!', 'success');
+                
+                // Reset form and UI state
+                form.reset();
+                categorySelect.value = ""; 
+                otherCategoryContainer.classList.add('hidden');
+                otherCategoryInput.removeAttribute('required');
+                otherCategoryInput.value = '';
+                document.getElementById('date').value = new Date().toISOString().split('T')[0];
+            } catch (error) {
+                console.error("Error adding document: ", error);
+                showMessage('Failed to record expense. See console.', 'error');
+            }
+        }
+
+        /**
+         * Sets up the real-time listener for all expenses.
+         */
+        function setupRealtimeDataListener() {
+            try {
+                const colRef = collection(db, getExpensesCollectionPath());
+                const q = query(colRef, orderBy('date', 'desc'));
+
+                onSnapshot(q, (snapshot) => {
+                    allExpenses = snapshot.docs.map(doc => ({
+                        id: doc.id,
+                        ...doc.data()
+                    }));
+                    console.log("Expenses updated:", allExpenses.length);
+                    processAndRenderDashboard();
+                }, (error) => {
+                    console.error("Error listening to expenses:", error);
+                    showMessage('Could not sync data in real-time.', 'error');
+                });
+            } catch (error) {
+                console.error("Error setting up listener:", error.message);
+            }
+        }
+
+        // --- Data Processing and Visualization ---
+
+        function aggregateMonthly(expenses) {
+            const monthlyTotals = expenses.reduce((acc, expense) => {
+                const [year, month] = expense.date.split('-');
+                const key = `${year}-${month}`;
+                acc[key] = (acc[key] || 0) + expense.amount;
+                return acc;
+            }, {});
+
+            const sortedKeys = Object.keys(monthlyTotals).sort();
+
+            const chartData = {
+                labels: sortedKeys.map(key => {
+                    const [year, month] = key.split('-');
+                    return new Date(year, month - 1).toLocaleString('default', { month: 'short', year: 'numeric' });
+                }),
+                totals: sortedKeys.map(key => monthlyTotals[key]),
+                categorySet: new Set(allExpenses.map(e => e.category)) // Use all expenses for filter population
+            };
+
+            return chartData;
+        }
+
+        function getFilteredExpenses() {
+            const filterCategory = filterCategorySelect.value;
+            const start = filterStartDate.value ? new Date(filterStartDate.value) : null;
+            const end = filterEndDate.value ? new Date(filterEndDate.value) : null;
+
+            return allExpenses.filter(expense => {
+                const categoryMatch = filterCategory === 'all' || expense.category === filterCategory;
+
+                let dateMatch = true;
+                if (start || end) {
+                    const expenseDate = new Date(expense.date);
+                    expenseDate.setUTCHours(0, 0, 0, 0);
+
+                    if (start && expenseDate < start) {
+                        dateMatch = false;
+                    }
+
+                    if (end) {
+                        dateMatch = dateMatch && (expenseDate <= end);
+                    }
+                }
+
+                return categoryMatch && dateMatch;
+            });
+        }
+
+        function renderChart(data) {
+            const ctx = document.getElementById('monthly-chart').getContext('2d');
+
+            if (chartInstance) {
+                chartInstance.destroy();
+            }
+
+            chartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.labels,
+                    datasets: [{
+                        label: 'Total Monthly Expense (Rs)',
+                        data: data.totals,
+                        backgroundColor: 'rgba(59, 130, 246, 0.5)',
+                        borderColor: '#3b82f6',
+                        borderWidth: 2,
+                        tension: 0.4,
+                        fill: true,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Amount (Rs)'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true
+                        },
+                        title: {
+                            display: true,
+                            text: 'Monthly Expenditure Over Time'
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderExpenseList(expenses) {
+            expenseListUl.innerHTML = '';
+            loadingIndicator.classList.add('hidden');
+
+            if (expenses.length === 0) {
+                noExpenses.classList.remove('hidden');
+                return;
+            }
+
+            noExpenses.classList.add('hidden');
+
+            expenses.forEach(expense => {
+                const li = document.createElement('li');
+                li.className = 'flex justify-between items-center py-3 px-2 transition duration-150 hover:bg-gray-50';
+                li.innerHTML = `
+                    <div class="flex-1 min-w-0">
+                        <p class="text-lg font-medium text-gray-800">${expense.category} (${expense.person})</p>
+                        <p class="text-sm text-gray-500">
+                            ${expense.date}
+                        </p>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-xl font-bold text-red-600">Rs ${expense.amount.toLocaleString('en-IN')}</p>
+                    </div>
+                `;
+                expenseListUl.appendChild(li);
+            });
+        }
+
+        function updateCategoryFilters(categorySet) {
+            const currentFilterValue = filterCategorySelect.value;
+            filterCategorySelect.innerHTML = '<option value="all">All Categories</option>';
+            const sortedCategories = Array.from(categorySet).sort();
+            
+            sortedCategories.forEach(category => {
+                const option = document.createElement('option');
+                option.value = category;
+                option.textContent = category;
+                filterCategorySelect.appendChild(option);
+            });
+            filterCategorySelect.value = currentFilterValue;
+        }
+
+        function processAndRenderDashboard() {
+            const filteredExpenses = getFilteredExpenses();
+            const chartData = aggregateMonthly(filteredExpenses);
+
+            // Update category filters based on ALL available data
+            const allCategorySet = chartData.categorySet;
+            updateCategoryFilters(allCategorySet);
+
+            // Render UI components
+            renderExpenseList(filteredExpenses);
+            renderChart(chartData);
+        }
+
+        // --- Event Listeners Setup ---
+
+        function setupFilterListeners() {
+            filterCategorySelect.addEventListener('change', processAndRenderDashboard);
+            filterStartDate.addEventListener('change', processAndRenderDashboard);
+            filterEndDate.addEventListener('change', processAndRenderDashboard);
+        }
+
+        function setupCategoryChangeListener() {
+            categorySelect.addEventListener('change', () => {
+                if (categorySelect.value === 'Other') {
+                    otherCategoryContainer.classList.remove('hidden');
+                    otherCategoryInput.setAttribute('required', 'required');
+                    otherCategoryInput.focus();
+                } else {
+                    otherCategoryContainer.classList.add('hidden');
+                    otherCategoryInput.removeAttribute('required');
+                    otherCategoryInput.value = '';
+                }
+            });
+        }
+
+
+        // --- Application Start ---
+        window.onload = () => {
+            // Set up the password check before anything else
+            passwordForm.addEventListener('submit', handlePasswordSubmit);
+            form.addEventListener('submit', handleFormSubmit);
+
+            // Set default date for new entry form to today
+            document.getElementById('date').value = new Date().toISOString().split('T')[0];
+        };
+
+    </script>
+</body>
+</html>
