@@ -175,14 +175,11 @@
     <!-- Firebase and Application Logic -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, setPersistence, browserSessionPersistence } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, addDoc, onSnapshot, collection, query, orderBy, serverTimestamp, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, setPersistence, browserSessionPersistence } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, addDoc, onSnapshot, collection, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // --- HARDCODED PASSWORD ---
-       
-    const masterPassword = "expense2025";
-
-    
+        // --- MASTER PASSWORD (Hardcoded) ---
+        const MASTER_PASSWORD = "expense2025"; 
         
         // --- DEPLOYMENT-READY FIREBASE CONFIGURATION ---
         const firebaseConfig = {
@@ -230,7 +227,7 @@
         // --- Authentication Gate Logic ---
 
         /**
-         * Handles the password submission to grant access.
+         * Handles the password submission to grant access using the hardcoded password.
          */
         function handlePasswordSubmit(e) {
             e.preventDefault();
@@ -314,8 +311,8 @@
             if (!currentUserId) {
                 throw new Error("User not authenticated.");
             }
-            // *** CRUCIAL CHANGE: USING PUBLIC/SHARED COLLECTION PATH ***
-            // This path is accessible by ANY authenticated user (per the new security rules).
+            // *** SHARED COLLECTION PATH ***
+            // artifacts/{appId}/public/data/shared_expenses
             return `/artifacts/${appId}/public/data/shared_expenses`;
         }
 
@@ -326,7 +323,7 @@
             e.preventDefault();
 
             if (!currentUserId) {
-                showMessage("Authentication required to save data. Please re-enter the password if necessary.", 'error');
+                showMessage("Authentication required to save data. Please try again.", 'error');
                 return;
             }
 
