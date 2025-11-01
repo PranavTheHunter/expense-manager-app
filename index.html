@@ -179,32 +179,10 @@
         import { getFirestore, doc, addDoc, onSnapshot, collection, query, orderBy, serverTimestamp, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- HARDCODED PASSWORD ---
-       export default (req, res) => {
-    // 1. Check the environment variable for the master password
-    // NOTE: Vercel automatically makes environment variables available here
-    const masterPassword = process.env.PASSWORD;
+       
+    const masterPassword = "expense2025";
 
-    if (!masterPassword) {
-        // Safety check if the variable isn't set (shouldn't happen if configured)
-        return res.status(500).json({ error: 'Master password not configured.' });
-    }
-
-    // 2. We expect the client to send the password in the request body
-    if (req.method !== 'POST') {
-        return res.status(405).send('Method Not Allowed');
-    }
-
-    const { password } = req.body;
-
-    // 3. Compare the entered password with the secure environment variable
-    if (password === masterPassword) {
-        // Respond with success status (200)
-        return res.status(200).json({ success: true });
-    } else {
-        // Respond with unauthorized status (401)
-        return res.status(401).json({ success: false, message: 'Incorrect Password' });
-    }
-};; 
+    
         
         // --- DEPLOYMENT-READY FIREBASE CONFIGURATION ---
         const firebaseConfig = {
