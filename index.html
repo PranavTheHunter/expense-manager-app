@@ -127,9 +127,19 @@
 
             <!-- Right Panel: Dashboard, Filters, and Expenses -->
             <div>
-                <!-- Filters Section -->
+                
+                <!-- Current Month Total Summary Card -->
+                <div class="card mb-6 p-6 bg-blue-600 text-white flex justify-between items-center rounded-xl shadow-xl">
+                    <div>
+                        <h2 class="text-xl font-medium opacity-80">Current Month's Total Spend</h2>
+                        <p class="text-sm opacity-90" id="current-month-label">Calculating...</p>
+                    </div>
+                    <p class="text-4xl font-extrabold" id="current-month-total">Rs 0.00</p>
+                </div>
+
+                <!-- Global Filters Section -->
                 <div class="card mb-6">
-                    <h2 class="text-xl font-semibold text-gray-700 mb-4">Filters</h2>
+                    <h2 class="text-xl font-semibold text-gray-700 mb-4">Global Filters</h2>
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         <div>
                             <label for="filter-category" class="block text-sm font-medium text-gray-700">Filter Category</label>
@@ -148,12 +158,28 @@
                         </div>
                     </div>
                 </div>
-
-                <!-- Chart Visualization -->
+                
+                <!-- Overall Monthly Trend Chart -->
                 <div class="card mb-6">
-                    <h2 class="text-xl font-semibold text-gray-700 mb-4 border-b pb-2">Monthly Expenditure Trend</h2>
+                    <h2 class="text-xl font-semibold text-gray-700 mb-4 border-b pb-2">Monthly Trend (Applies Global Filters)</h2>
                     <div class="p-2">
-                        <canvas id="monthly-chart"></canvas>
+                        <canvas id="monthly-trend-chart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Category Comparison Chart (NEW) -->
+                <div class="card mb-6">
+                    <h2 class="text-xl font-semibold text-gray-700 mb-4 border-b pb-2">Category Comparison Analysis</h2>
+                    
+                    <div class="mb-4">
+                        <label for="filter-comparison-categories" class="block text-sm font-medium text-gray-700">Select 2+ Categories for Comparison (Obeys Date Filters Only)</label>
+                        <select multiple id="filter-comparison-categories" size="4" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border h-32">
+                            <!-- Categories populated dynamically -->
+                        </select>
+                    </div>
+
+                    <div class="p-2">
+                        <canvas id="comparison-chart"></canvas>
                     </div>
                 </div>
 
@@ -200,7 +226,8 @@
         let db;
         let auth;
         let currentUserId = null;
-        let chartInstance = null;
+        let trendChartInstance = null; // Renamed chart instance
+        let comparisonChartInstance = null; // New chart instance
         let allExpenses = [];
 
         // UI elements
@@ -218,6 +245,11 @@
         const filterStartDate = document.getElementById('filter-start-date');
         const filterEndDate = document.getElementById('filter-end-date');
         const messageBox = document.getElementById('message-box');
+        const filterComparisonCategories = document.getElementById('filter-comparison-categories'); 
+
+        // Data summary elements
+        const currentMonthTotalDisplay = document.getElementById('current-month-total');
+        const currentMonthLabelDisplay = document.getElementById('current-month-label');
 
         // UI elements for 'Other' category
         const categorySelect = document.getElementById('category');
@@ -311,8 +343,6 @@
             if (!currentUserId) {
                 throw new Error("User not authenticated.");
             }
-            // *** SHARED COLLECTION PATH ***
-            // artifacts/{appId}/public/data/shared_expenses
             return `/artifacts/${appId}/public/data/shared_expenses`;
         }
 
@@ -330,7 +360,6 @@
             const selectedCategory = categorySelect.value;
             let finalCategory = selectedCategory;
 
-            // Check if 'Other' is selected and get the custom value
             if (selectedCategory === 'Other') {
                 finalCategory = otherCategoryInput.value.trim();
                 if (!finalCategory) {
@@ -339,11 +368,10 @@
                 }
             }
 
-
             const newExpense = {
-                category: finalCategory, // Use the final, potentially custom category
+                category: finalCategory, 
                 amount: parseFloat(document.getElementById('amount').value),
-                date: document.getElementById('date').value, // Store as YYYY-MM-DD string
+                date: document.getElementById('date').value,
                 person: document.getElementById('person').value || 'Self',
                 createdAt: serverTimestamp() 
             };
@@ -377,7 +405,8 @@
         function setupRealtimeDataListener() {
             try {
                 const colRef = collection(db, getExpensesCollectionPath());
-                const q = query(colRef, orderBy('date', 'desc'));
+                // NOTE: We only order by date here to keep the list chronological. Filters are applied in JS.
+                const q = query(colRef, orderBy('date', 'desc')); 
 
                 onSnapshot(q, (snapshot) => {
                     allExpenses = snapshot.docs.map(doc => ({
@@ -397,36 +426,57 @@
 
         // --- Data Processing and Visualization ---
 
-        function aggregateMonthly(expenses) {
-            const monthlyTotals = expenses.reduce((acc, expense) => {
+        /**
+         * Aggregates expenses by month, category, and total monthly sum.
+         */
+        function aggregateData(expenses) {
+            const monthlyCategoryTotals = {};
+            let monthlyTotals = {};
+            const allCategories = new Set();
+            const allMonths = new Set();
+            
+            const today = new Date();
+            const currentYearMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+            let currentMonthSum = 0;
+
+            expenses.forEach(expense => {
                 const [year, month] = expense.date.split('-');
-                const key = `${year}-${month}`;
-                acc[key] = (acc[key] || 0) + expense.amount;
-                return acc;
-            }, {});
+                const monthKey = `${year}-${month}`; 
+                const category = expense.category;
 
-            const sortedKeys = Object.keys(monthlyTotals).sort();
+                allMonths.add(monthKey);
+                allCategories.add(category);
 
-            const chartData = {
-                labels: sortedKeys.map(key => {
-                    const [year, month] = key.split('-');
-                    return new Date(year, month - 1).toLocaleString('default', { month: 'short', year: 'numeric' });
-                }),
-                totals: sortedKeys.map(key => monthlyTotals[key]),
-                categorySet: new Set(allExpenses.map(e => e.category)) // Use all expenses for filter population
-            };
+                if (!monthlyCategoryTotals[monthKey]) {
+                    monthlyCategoryTotals[monthKey] = {};
+                }
 
-            return chartData;
+                // Aggregate by Category
+                monthlyCategoryTotals[monthKey][category] = 
+                    (monthlyCategoryTotals[monthKey][category] || 0) + expense.amount;
+                
+                // Aggregate Total Monthly Spend
+                monthlyTotals[monthKey] = (monthlyTotals[monthKey] || 0) + expense.amount;
+
+                // Calculate current month's sum
+                if (monthKey === currentYearMonth) {
+                    currentMonthSum += expense.amount;
+                }
+            });
+            
+            const sortedMonths = Array.from(allMonths).sort();
+
+            return { monthlyCategoryTotals, monthlyTotals, allMonths: sortedMonths, allCategories: Array.from(allCategories).sort(), currentMonthSum };
         }
 
-        function getFilteredExpenses() {
-            const filterCategory = filterCategorySelect.value;
+        /**
+         * Filters the master list of expenses based ONLY on the date range.
+         */
+        function getDateFilteredExpenses() {
             const start = filterStartDate.value ? new Date(filterStartDate.value) : null;
             const end = filterEndDate.value ? new Date(filterEndDate.value) : null;
 
             return allExpenses.filter(expense => {
-                const categoryMatch = filterCategory === 'all' || expense.category === filterCategory;
-
                 let dateMatch = true;
                 if (start || end) {
                     const expenseDate = new Date(expense.date);
@@ -440,30 +490,60 @@
                         dateMatch = dateMatch && (expenseDate <= end);
                     }
                 }
-
-                return categoryMatch && dateMatch;
+                return dateMatch;
             });
         }
+        
+        /**
+         * Filters a given list of expenses based ONLY on the single category filter.
+         */
+        function getExpensesForListAndMainChart(expenses) {
+            const filterCategory = filterCategorySelect.value;
+            // The input 'expenses' should be the date-filtered set.
+            return expenses.filter(expense => {
+                return filterCategory === 'all' || expense.category === filterCategory;
+            });
+        }
+        
+        // --- Chart Rendering Functions ---
 
-        function renderChart(data) {
-            const ctx = document.getElementById('monthly-chart').getContext('2d');
-
-            if (chartInstance) {
-                chartInstance.destroy();
+        const CHART_COLORS = [
+            '#3b82f6', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#6366f1', '#f97316', 
+            '#06b6d4', '#eab308', '#ec4899', '#34d399', '#fb7185'
+        ];
+        
+        /**
+         * Renders the Overall Monthly Trend Line Chart (Total Spend).
+         */
+        function renderMonthlyTrendChart(aggregationResult) {
+            const ctx = document.getElementById('monthly-trend-chart').getContext('2d');
+            
+            if (trendChartInstance) {
+                trendChartInstance.destroy();
             }
 
-            chartInstance = new Chart(ctx, {
+            const dataKeys = aggregationResult.allMonths;
+            
+            const labels = dataKeys.map(key => {
+                const [year, month] = key.split('-');
+                return new Date(year, month - 1).toLocaleString('default', { month: 'short', year: 'numeric' });
+            });
+            
+            const totals = dataKeys.map(key => aggregationResult.monthlyTotals[key] || 0);
+
+            trendChartInstance = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: data.labels,
+                    labels: labels,
                     datasets: [{
                         label: 'Total Monthly Expense (Rs)',
-                        data: data.totals,
-                        backgroundColor: 'rgba(59, 130, 246, 0.5)',
+                        data: totals,
+                        backgroundColor: 'rgba(59, 130, 246, 0.2)',
                         borderColor: '#3b82f6',
-                        borderWidth: 2,
+                        borderWidth: 3,
                         tension: 0.4,
                         fill: true,
+                        pointBackgroundColor: '#1d4ed8'
                     }]
                 },
                 options: {
@@ -472,24 +552,74 @@
                     scales: {
                         y: {
                             beginAtZero: true,
-                            title: {
-                                display: true,
-                                text: 'Amount (Rs)'
-                            }
+                            title: { display: true, text: 'Amount (Rs)' }
+                        }
+                    },
+                    plugins: { tooltip: { mode: 'index', intersect: false } }
+                }
+            });
+        }
+        
+        /**
+         * Renders the Multi-Category Comparison Line Chart.
+         */
+        function renderCategoryComparisonChart(aggregationResult) {
+            const ctx = document.getElementById('comparison-chart').getContext('2d');
+            
+            if (comparisonChartInstance) {
+                comparisonChartInstance.destroy();
+            }
+
+            const selectedCategories = Array.from(filterComparisonCategories.selectedOptions).map(opt => opt.value);
+            const dataKeys = aggregationResult.allMonths;
+            
+            const labels = dataKeys.map(key => {
+                const [year, month] = key.split('-');
+                return new Date(year, month - 1).toLocaleString('default', { month: 'short', year: 'numeric' });
+            });
+            
+            const datasets = selectedCategories.map((category, index) => {
+                const color = CHART_COLORS[index % CHART_COLORS.length];
+                
+                const data = dataKeys.map(monthKey => {
+                    return aggregationResult.monthlyCategoryTotals[monthKey][category] || 0;
+                });
+                
+                return {
+                    label: category,
+                    data: data,
+                    borderColor: color,
+                    borderWidth: 2,
+                    tension: 0.4,
+                    fill: false,
+                    pointRadius: 4,
+                    pointBackgroundColor: color
+                };
+            });
+
+            comparisonChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: { display: true, text: 'Amount (Rs)' }
                         }
                     },
                     plugins: {
-                        legend: {
-                            display: true
-                        },
-                        title: {
-                            display: true,
-                            text: 'Monthly Expenditure Over Time'
-                        }
+                        tooltip: { mode: 'index', intersect: false },
+                        title: { display: false }
                     }
                 }
             });
         }
+
 
         function renderExpenseList(expenses) {
             expenseListUl.innerHTML = '';
@@ -520,39 +650,71 @@
             });
         }
 
-        function updateCategoryFilters(categorySet) {
+        function updateCategoryFilters(allCategories) {
             const currentFilterValue = filterCategorySelect.value;
-            filterCategorySelect.innerHTML = '<option value="all">All Categories</option>';
-            const sortedCategories = Array.from(categorySet).sort();
+            const currentComparisonValues = Array.from(filterComparisonCategories.options).filter(o => o.selected).map(o => o.value);
             
-            sortedCategories.forEach(category => {
+            // 1. Update Single Select Filter (Global)
+            filterCategorySelect.innerHTML = '<option value="all">All Categories</option>';
+            allCategories.forEach(category => {
                 const option = document.createElement('option');
                 option.value = category;
                 option.textContent = category;
                 filterCategorySelect.appendChild(option);
             });
             filterCategorySelect.value = currentFilterValue;
+            
+            // 2. Update Multi-Select Filter (Comparison)
+            filterComparisonCategories.innerHTML = '';
+            allCategories.forEach(category => {
+                const option = document.createElement('option');
+                option.value = category;
+                option.textContent = category;
+                if (currentComparisonValues.includes(category)) {
+                    option.selected = true;
+                }
+                filterComparisonCategories.appendChild(option);
+            });
         }
 
         function processAndRenderDashboard() {
-            const filteredExpenses = getFilteredExpenses();
-            const chartData = aggregateMonthly(filteredExpenses);
+            // 1. Full aggregation data (for the top card and filter dropdowns)
+            const fullAggregation = aggregateData(allExpenses); 
+            
+            // 2. Filter data by date (Base data set for all filtering)
+            const dateFilteredExpenses = getDateFilteredExpenses(); 
+            
+            // 3. Filter data for the List and Main Trend Chart (respects category + date filters)
+            const globallyFilteredExpenses = getExpensesForListAndMainChart(dateFilteredExpenses);
+            const globalAggregationResult = aggregateData(globallyFilteredExpenses);
 
-            // Update category filters based on ALL available data
-            const allCategorySet = chartData.categorySet;
-            updateCategoryFilters(allCategorySet);
+            // 4. Update the Current Month Total display (Based on ALL expenses, NOT filtered)
+            const today = new Date();
+            currentMonthTotalDisplay.textContent = `Rs ${fullAggregation.currentMonthSum.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+            currentMonthLabelDisplay.textContent = today.toLocaleString('default', { month: 'long', year: 'numeric' });
 
-            // Render UI components
-            renderExpenseList(filteredExpenses);
-            renderChart(chartData);
+            // 5. Update category filters based on ALL available data
+            updateCategoryFilters(fullAggregation.allCategories);
+
+            // 6. Render UI components (using the filtered aggregation data)
+            renderExpenseList(globallyFilteredExpenses); 
+            renderMonthlyTrendChart(globalAggregationResult); 
+            
+            // 7. Render Comparison Chart (Uses only date-filtered data, ignoring the single category filter)
+            const comparisonAggregationResult = aggregateData(dateFilteredExpenses);
+            renderCategoryComparisonChart(comparisonAggregationResult); 
         }
 
         // --- Event Listeners Setup ---
 
         function setupFilterListeners() {
+            // These listeners trigger the main processing pipeline
             filterCategorySelect.addEventListener('change', processAndRenderDashboard);
             filterStartDate.addEventListener('change', processAndRenderDashboard);
             filterEndDate.addEventListener('change', processAndRenderDashboard);
+            
+            // FIX: Add the event listener for the comparison filter here instead of in the HTML
+            filterComparisonCategories.addEventListener('change', processAndRenderDashboard);
         }
 
         function setupCategoryChangeListener() {
